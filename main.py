@@ -416,6 +416,28 @@ def login_bt():
         zpet_btn = Button(frame, text="Zpět", bg="#ffafcc", font=font, width=5)
         zpet_btn.grid(row=3, column=0, pady=10)
 
+def admin():
+    w.unbind(f"<KeyPress-{key}>")
+    w.unbind(f"<KeyRelease-{key}>")
+
+    admin_w = Toplevel()
+keys = {
+    'a': False,
+    'd': False,
+    'm': False,
+    'i': False,
+    'n': False
+}
+
+def update_key_state(event, state):
+    keys[event.keysym] = state
+    if all(keys.values()):
+        admin()
+
+for key in keys.keys():
+    w.bind(f"<KeyPress-{key}>", lambda event: update_key_state(event, True))
+    w.bind(f"<KeyRelease-{key}>", lambda event: update_key_state(event, False))
+
 play_btn = Button(w, text="Play", bg="#a0c4ff", width=20, height=2, font=font, command=play)
 play_btn.grid(row=0, column=0, pady=20, padx=290)
 create_btn = Button(w, text="Create", bg="#a0c4ff", width=20, height=2, font=font, command=create)
