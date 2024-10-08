@@ -9,6 +9,7 @@ w = Tk()
 w.title("Pexeso")
 w.configure(bg="#f7f3e9")  # Jemná pastelová barva pozadí
 w.geometry("800x400")
+w.iconbitmap("OIP.ico")
 w.resizable(False, False)
 
 font = ("Helvetica", 12, "bold")
@@ -218,6 +219,8 @@ def sign_up():
     sign_up_btn.grid_forget()
     log_btn.place_forget()
 
+    w.grid_rowconfigure(0, weight=0)
+    w.grid_rowconfigure(1, weight=0)
     w.grid_columnconfigure(0, weight=1)
     w.grid_columnconfigure(3, weight=1)
 
@@ -316,7 +319,6 @@ def login_second(entry, frame, oko, remember, remember_ra, var):
     global name
     cursor.execute(f'SELECT password FROM login WHERE name LIKE ?;', (entry[0].get(),))
     password_right = cursor.fetchall()
-    print(password_right)
     if password_right == []:
         error = messagebox.showerror("Nelze přihlásit", "Nickname neexistuje!")
     elif password_right[0][0] != entry[1].get():
@@ -333,8 +335,6 @@ def login():
     create_btn.grid_forget()
     login_btn.grid_forget()
     sign_up_btn.grid_forget()
-    exit_btn.place_forget()
-    help_btn.place_forget()
     log_btn.place_forget()
 
     w.grid_rowconfigure(0, weight=1)  # Vyvážení prostoru nad rámečkem
@@ -385,6 +385,36 @@ def login():
     start_btn.grid(row=3, column=1)
     zpet_btn = Button(frame, text="Zpět", bg="#ffafcc", font=font, width=5, command=lambda: zpet3(frame, oko, remember, remember_ra))
     zpet_btn.grid(row=3, column=0, pady=10)
+def login_bt():
+    if name == "Login":
+        login()
+    else:
+        play_btn.grid_forget()
+        create_btn.grid_forget()
+        login_btn.grid_forget()
+        sign_up_btn.grid_forget()
+        exit_btn.place_forget()
+        help_btn.place_forget()
+        log_btn.place_forget()
+
+        w.grid_rowconfigure(0, weight=1)  # Vyvážení prostoru nad rámečkem
+        w.grid_rowconfigure(1, weight=1)  # Vyvážení prostoru pod rámečkem
+        w.grid_columnconfigure(0, weight=1)  # Vyvážení prostoru vlevo od rámečku
+        w.grid_columnconfigure(1, weight=1)
+
+        frame = Frame(w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5", highlightthickness=4)
+        frame.place(relx=0.5, rely=0.5, anchor="center")
+
+        l = Label(frame, text=name, bg="#f7f3e9", font=font)
+        l.grid(row=0, column=0, pady=10, padx=100)
+
+        cursor.execute(f'SELECT pexeso FROM login WHERE name LIKE ?;', (name))
+        print(cursor.fetchall())
+        pex = Label(frame, text=f"Splněných Pexes: {cursor.fetchall()}", bg="#f7f3e9", font=font)
+        pex.grid(row=1, column=0, pady=10, padx=100)
+
+        zpet_btn = Button(frame, text="Zpět", bg="#ffafcc", font=font, width=5)
+        zpet_btn.grid(row=3, column=0, pady=10)
 
 play_btn = Button(w, text="Play", bg="#a0c4ff", width=20, height=2, font=font, command=play)
 play_btn.grid(row=0, column=0, pady=20, padx=290)
@@ -398,7 +428,7 @@ exit_btn = Button(w, text="Quit", bg="#a0c4ff", width=10, height=2, font=font, c
 exit_btn.place(x=670, y=325)
 help_btn = Button(w, text="Help", bg="#a0c4ff", width=10, height=2, font=font, command=lambda: w.quit())
 help_btn.place(x=15, y=325)
-log_btn = Button(w, text=name, bg="#ffafcc", font=font, command=lambda: w.quit())
+log_btn = Button(w, text=name, bg="#ffafcc", font=font, command=login_bt)
 log_btn.place(x=700, y=15)
 
 try:
