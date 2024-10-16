@@ -4,6 +4,9 @@ from tkinter import messagebox
 import random
 import pyodbc
 from PIL import Image, ImageTk
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 w = Tk()
 w.title("EduQuest")
@@ -100,6 +103,264 @@ def show_main(frame, bind):
     exit_btn.place(x=670, y=325)
     help_btn.place(x=15, y=325)
     log_btn.place(x=670, y=15)
+def create_hash(entry):
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(entry.widget.get().encode('utf-8'), salt)
+    password = hashed.decode('utf-8')
+    return password
+def unhash_password(entry, result):
+    hashed_password = result[0].encode('utf-8')
+    heslo = bcrypt.checkpw(entry[1].widget.get().encode('utf-8'), hashed_password)
+    return heslo
+def new_password(frame, frame1):
+    frame1.pack_forget()
+
+    agree = False
+
+    def change(entry):
+        global name
+        if entry[0].widget.get() != entry[1].widget.get():
+            error = messagebox.showerror("Nelze přihlásit", "Hesla se neshodují")
+
+        elif entry[0].widget.get() == "" or entry[1].widget.get() == "":
+            error = messagebox.showerror("Nelze přihlásit", "Prázdné pole")
+        else:
+            password = create_hash(entry[0])
+            cursor.execute(f"UPDATE login SET password = ? WHERE name = ?;", (password, name))
+            cursor.commit()
+            notification = messagebox.showinfo("Info", "Heslo bylo uspěšně změněno!")
+            log_btn.config(text=name)
+
+            show_main(frame1, [])
+
+    def oko1(entry, oko):
+        if entry.widget.cget("show") == "*":
+            entry.config(show="")
+            oko.config(bg="grey")
+        else:
+            entry.config(show='*')
+            oko.config(bg="white")
+
+    def rovnost(event, entry, l):
+        global agree
+        if entry[0].widget.get() == entry[1].widget.get():
+            l.config(text="Hesla se shodují!", fg="green")
+            agree = True
+
+        else:
+            l.config(text="Hesla se neshodují!", fg="red")
+            agree = False
+        l.place(x=240, y=113)
+
+    def back():
+        frame1.pack_forget()
+        frame.pack(pady=50)
+
+    name = ["new password:", "confrim password:"]
+    entry = []
+    frame1 = Objekty("Frame", master=w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5",
+                     highlightthickness=4)
+    frame1.pack(pady=50)
+    for x in range(2):
+        l = Objekty("Label", master=frame1.widget, text=name[x], bg="#f7f3e9", font=("Helvetica", 12, "bold"))
+        l.grid(row=x, column=0, pady=20, padx=30, sticky='nsew')
+        e = Objekty("Entry", master=frame1.widget, font=("Helvetica", 12), show="*")
+        e.grid(row=x, column=1, pady=20, padx=30, sticky='nsew')
+        entry.append(e)
+
+    image = Image.open("eye-icon-vector-illustration.jpg")
+    image = image.resize((10, 10), Image.LANCZOS)
+    photo = ImageTk.PhotoImage(image)
+
+    oko = Objekty("Button", master=frame1.widget, image=photo, command=lambda: oko1(entry[0], oko))
+    oko.photo = photo
+    oko.place(x=430, y=25)
+
+    oko_1 = Objekty("Button", master=frame1.widget, image=photo, command=lambda: oko1(entry[1], oko_1))
+    oko_1.photo = photo
+    oko_1.place(x=430, y=90)
+
+    l = Objekty("Label", master=frame1.widget)
+
+    start_btn = Objekty("Button", master=frame1.widget, text="Potvrdit", bg="#ffafcc", font=font, width=5,
+                        command=lambda: change(entry))
+    start_btn.grid(row=4, column=1, ipadx=20, pady=10)
+    zpet_btn = Objekty("Button", master=frame1.widget, text="Zpět", bg="#ffafcc", font=font, width=5,
+                       command=back)
+    zpet_btn.grid(row=4, column=0, ipadx=20, pady=10)
+
+    entry[0].bind('<KeyRelease>', lambda event: rovnost(event, entry, l))
+    entry[1].bind('<KeyRelease>', lambda event: rovnost(event, entry, l))
+def e_mail(event, frame):
+    global name
+    try:
+        code = random.randrange(111111, 999999)
+        sender_email = "123krz@seznam.cz"
+        sender_password = "**********"
+        recipient_email = cursor.execute("select email from login where name like ?", (name, )).fetchall()[0][0]
+        subject = "[EduQuest] Oveření vašeho zařízení"
+        body = f""" Ahoj {name}!
+
+        Pokus o změnu hesla vyžaduje další ověření, protože si nepamatujete vaše heslo. Chcete-li dokončit změnu hesla či přihlášení, zadejte ověřovací kód na nerozpoznaném zařízení.
+
+        Ověřovací kód: {str(code)}
+
+        Pokud jste se nepokusili přihlásit ke svému účtu, může být váš účet prozrazen. Navštivte naši aplikaci a vytvořte nové silné heslo pro svůj účet EduQuest.
+
+        Díky,
+        tým EduQuest"""
+
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
+        msg['Subject'] = subject
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        try:
+            server = smtplib.SMTP('smtp.seznam.cz', 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            text = msg.as_string()
+            server.sendmail(sender_email, recipient_email, text)
+
+            frame.pack_forget()
+
+            def on_enter(event):
+                event.widget.config(fg="blue")
+
+            def on_leave(event):
+                event.widget.config(fg="black")
+
+            def back():
+                frame1.pack_forget()
+                frame.pack(pady=50)
+
+            def control(entry, code):
+                try:
+                    if int(entry.widget.get()) == code:
+                        new_password(frame, frame1)
+                    else:
+                        error = messagebox.showerror("Špratný kód", "Kód který jste zadali se neshoduje!")
+                except:
+                    error = messagebox.showerror("Špratný kód", "Kód který jste zadali se neshoduje!")
+
+            frame1 = Objekty("Frame", master=w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5",
+                             highlightthickness=4)
+            frame1.pack(pady=50)
+            label1 = Objekty("Label", master=frame1.widget, text=f"Kód poslán na email:", fg="black", font=font)
+            label1.grid(row=0, column=0, pady=10, padx=50)
+            label2 = Objekty("Label", master=frame1.widget, text=recipient_email, fg="black", font=font)
+            label2.grid(row=0, column=1, pady=10, padx=50)
+            l = Objekty("Label", master=frame1.widget, text="Ověřovací kód:", bg="#f7f3e9",
+                        font=("Helvetica", 12, "bold"))
+            l.grid(row=1, column=0, pady=10, padx=20, sticky='nsew')
+            e = Objekty("Entry", master=frame1.widget, font=("Helvetica", 12))
+            e.grid(row=1, column=1, pady=10, padx=30, sticky='nsew')
+            label = Objekty("Label", master=frame1.widget, text="Poslat znovu", fg="black", font=font)
+            label.grid(row=2, column=1, pady=10, padx=50)
+
+            start_btn = Objekty("Button", master=frame1.widget, text="Potvrdit", bg="#ffafcc", font=font, width=5,
+                                command=lambda: control(e, code))
+            start_btn.grid(row=3, column=1, ipadx=20, pady=10)
+            zpet_btn = Objekty("Button", master=frame1.widget, text="Zpět", bg="#ffafcc", font=font, width=5,
+                               command=back)
+            zpet_btn.grid(row=3, column=0, ipadx=20, pady=10)
+
+            label.bind("<Enter>", on_enter)
+            label.bind("<Leave>", on_leave)
+            label.bind("<Button-1>", lambda event: e_mail(event, frame1))
+
+            server.quit()
+
+        except Exception as e:
+            error = messagebox.showerror("Chyba při odesílání e-mailu", f"Váš email neexistuje, napište na podporu")
+
+    except:
+        error = messagebox.showerror("Chyba při odesílání e-mailu", f"Váš nickname neexistuje!")
+        frame.pack(pady=50)
+        name = "Login"
+def change_password(event, frame):
+    frame.pack_forget()
+
+    def change(entry, frame):
+        global name
+        cursor.execute("SELECT password FROM login WHERE name = ?", (entry[0].widget.get(),))
+        result = cursor.fetchone()
+        if not result:
+            error = messagebox.showerror("Nelze přihlásit", "Nickname neexistuje!")
+        else:
+            heslo = unhash_password(entry, result)
+            if heslo:
+                password = create_hash(entry[2])
+                cursor.execute(f"UPDATE login SET password = ? WHERE name = ?;", (password, entry[0].widget.get()))
+                cursor.commit()
+
+                show_main(frame1, [])
+            else:
+                error = messagebox.showerror("Chyba", "Nesprávné heslo!")
+    def oko1(entry, oko):
+        if entry.widget.cget("show") == "*":
+            entry.config(show="")
+            oko.config(bg="grey")
+        else:
+            entry.config(show='*')
+            oko.config(bg="white")
+    def back():
+        frame1.pack_forget()
+        frame.pack(pady=50)
+    def on_enter(event):
+        event.widget.config(fg="blue")
+    def on_leave(event):
+        event.widget.config(fg="black")
+
+    def email(event, entry):
+        global name
+        name = entry[0].widget.get()
+        e_mail(event, frame1)
+
+    name = ["nickname:", "password:", "new password:"]
+    entry = []
+    label = []
+    frame1 = Objekty("Frame", master=w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5",
+                    highlightthickness=4)
+    frame1.pack(pady=50)
+    for x in range(3):
+        l = Objekty("Label", master=frame1.widget, text=name[x], bg="#f7f3e9", font=("Helvetica", 12, "bold"))
+        l.grid(row=x, column=0, pady=20, padx=20, sticky='nsew')
+        label.append(l)
+        if name[x] == "nickname:":
+            e = Objekty("Entry", master=frame1.widget, font=("Helvetica", 12))
+        else:
+            e = Objekty("Entry", master=frame1.widget, font=("Helvetica", 12), show="*")
+        e.grid(row=x, column=1, pady=20, padx=30, sticky='nsew')
+        entry.append(e)
+
+    image = Image.open("eye-icon-vector-illustration.jpg")
+    image = image.resize((10, 10), Image.LANCZOS)
+    photo = ImageTk.PhotoImage(image)
+
+    oko = Objekty("Button", master=frame1.widget, image=photo, command=lambda: oko1(entry[1], oko))
+    oko.photo = photo
+    oko.place(x=380, y=90)
+
+    oko1_button = Objekty("Button", master=frame1.widget, image=photo, command=lambda: oko1(entry[2], oko1_button))
+    oko1_button.photo = photo
+    oko1_button.place(x=380, y=155)
+
+    label = Objekty("Label", master=frame1.widget, text="Zapomněl heslo", fg="black", font=font)
+    label.grid(row=3, column=1, pady=10, padx=50)
+
+    start_btn = Objekty("Button", master=frame1.widget, text="Login", bg="#ffafcc", font=font, width=5,
+                        command=lambda: change(entry, frame1))
+    start_btn.grid(row=4, column=1)
+    zpet_btn = Objekty("Button", master=frame1.widget, text="Zpět", bg="#ffafcc", font=font, width=5,
+                       command=back)
+    zpet_btn.grid(row=4, column=0, pady=10)
+
+    label.bind("<Enter>", on_enter)
+    label.bind("<Leave>", on_leave)
+    label.bind("<Button-1>", lambda event: email(event, entry))
 def main_pexeso(soubor, num):
     global w2
     pary = {}
@@ -275,9 +536,7 @@ def sign_up():
             elif entry[0].widget.get() == "" or entry[1].widget.get() == "" or entry[2].widget.get() == "" or entry[3].widget.get() == "":
                 error = messagebox.showerror("Nelze přihlásit", "Prázdné pole")
             else:
-                salt = bcrypt.gensalt()
-                hashed = bcrypt.hashpw(entry[2].widget.get().encode('utf-8'), salt)
-                password = hashed.decode('utf-8')
+                password = create_hash(entry[2])
                 cursor.execute('INSERT INTO login(name, password, email, pexeso, pexes_v) VALUES (?, ?, ?, ?, ?);',
                                (entry[1].widget.get(), password, entry[0].widget.get(), 0, 0))
                 cursor.commit()
@@ -285,7 +544,7 @@ def sign_up():
                 log_btn.config(text=name)
                 if var.get() == 1:
                     with open("login.txt", "w", encoding='utf-8') as file:
-                        file.write(f"{entry[1].widget.get()}\n{entry[2].widget.get()}")
+                        file.write(f"{entry[1].widget.get()}")
                 show_main(frame, entry)
 
         def oko1(entry, oko):
@@ -317,7 +576,6 @@ def sign_up():
 
         name = ["e-mail:", "nickname:", "password:", "confrim password:"]
         entry = []
-        label = []
         frame = Objekty("Frame", master=w, width=600, height=400, bg='lightblue', highlightbackground="#ffd6a5", highlightthickness=4)
         frame.pack(ipady=20, ipadx=50)
         frame.grid_columnconfigure(0, weight=1)
@@ -326,7 +584,6 @@ def sign_up():
         for x in range(4):
             l = Objekty("Label", master=frame.widget, text=name[x], bg="#f7f3e9", font=("Helvetica", 12, "bold"))
             l.grid(row=x, column=0, pady=10)
-            label.append(l)
             if name[x] == "password:" or name[x] == "confrim password:":
                 e = Objekty("Entry", master=frame.widget, font=("Helvetica", 12), show="*")
             else:
@@ -358,10 +615,10 @@ def sign_up():
 
         start_btn = Objekty("Button", master=frame.widget, text="Login", bg="#ffafcc", font=("Helvetica", 12, "bold"), width=15,
                            command=lambda: login_first(entry, var, frame))
-        start_btn.grid(row=5, column=1, pady=10)
+        start_btn.grid(row=6, column=1, pady=10)
         zpet_btn = Objekty("Button", master=frame.widget, text="Zpět", bg="#ffafcc", font=("Helvetica", 12, "bold"), width=15,
                           command=lambda: show_main(frame, entry))
-        zpet_btn.grid(row=5, column=0, pady=10)
+        zpet_btn.grid(row=6, column=0, pady=10)
 
         entry[2].bind('<KeyRelease>', lambda event: rovnost(event, entry, l))
         entry[3].bind('<KeyRelease>', lambda event: rovnost(event, entry, l))
@@ -384,14 +641,13 @@ def login():
             if not result:
                 error = messagebox.showerror("Nelze přihlásit", "Nickname neexistuje!")
             else:
-                hashed_password = result[0].encode('utf-8')
-                heslo = bcrypt.checkpw(entry[1].widget.get().encode('utf-8'), hashed_password)
+                heslo = unhash_password(entry, result)
                 if heslo:
                     name = entry[0].widget.get()
                     log_btn.config(text=name)
                     if var.get() == 1:
                         with open("login.txt", "w", encoding='utf-8') as file:
-                            file.write(f"{entry[0].widget.get()}\n{entry[1].widget.get()}")
+                            file.write(f"{entry[0].widget.get()}")
                     show_main(frame, [])
                 else:
                     error = messagebox.showerror("Nelze přihlásit", "Nesprávné heslo!")
@@ -404,15 +660,25 @@ def login():
                 entry.config(show='*')
                 oko.config(bg="white")
 
+        def on_enter(event):
+            event.widget.config(fg="blue")
+
+        def on_leave(event):
+            event.widget.config(fg="black")
+
+        def email(event, entry):
+            global name
+            name = entry[0].widget.get()
+            e_mail(event, frame)
+
+
         name = ["nickname:", "password:"]
         entry = []
-        label = []
         frame = Objekty("Frame", master=w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5", highlightthickness=4)
         frame.pack(pady=50)
         for x in range(2):
             l = Objekty("Label", master=frame.widget, text=name[x], bg="#f7f3e9", font=("Helvetica", 12, "bold"))
             l.grid(row=x, column=0, pady=20, padx=20, sticky='nsew')
-            label.append(l)
             if name[x] == "password:":
                 e = Objekty("Entry", master=frame.widget, font=("Helvetica", 12), show="*")
             else:
@@ -435,12 +701,19 @@ def login():
         remember_ra = Objekty("Checkbutton", master=frame.widget, font=("Helvetica", 12), variable=var, onvalue=1)
         remember_ra.grid(row=2, column=1)
 
+        label = Objekty("Label", master=frame.widget, text="Zapomněl heslo", fg="black", font=font)
+        label.grid(row=3, column=1, pady=10, padx=50)
+
         start_btn = Objekty("Button", master=frame.widget, text="Login", bg="#ffafcc", font=font, width=5,
                            command=lambda: login_second(entry, frame, var))
-        start_btn.grid(row=3, column=1)
+        start_btn.grid(row=4, column=1)
         zpet_btn = Objekty("Button", master=frame.widget, text="Zpět", bg="#ffafcc", font=font, width=5,
                           command=lambda: show_main(frame, []))
-        zpet_btn.grid(row=3, column=0, pady=10)
+        zpet_btn.grid(row=4, column=0, pady=10)
+
+        label.bind("<Enter>", on_enter)
+        label.bind("<Leave>", on_leave)
+        label.bind("<Button-1>", lambda event: email(event, entry))
 def user():
     global name
     if not databaze:
@@ -457,10 +730,8 @@ def user():
 
         def on_enter(event):
             event.widget.config(fg="blue")
-
         def on_leave(event):
             event.widget.config(fg="black")
-
         def on_click(event):
             print("Label byl kliknut!")
 
@@ -472,6 +743,30 @@ def user():
 
             with open("h.txt", "w") as h_txt:
                 h_txt.write(str(h))
+
+        def safe():
+            global name
+            if name != l.widget.get():
+                error = messagebox.askquestion("Warning", "Opravdu chcete změnit heslo?")
+                if error:
+                    cursor.execute(f'SELECT name FROM login;')
+                    nickname = cursor.fetchall()
+                    agree = True
+                    for x in nickname:
+                        if x[0] == l.widget.get():
+                            agree = False
+                            break
+                    if not agree:
+                        error = messagebox.showerror("Error", "Nickname už je použit")
+                    else:
+                        cursor.execute(f"UPDATE login SET name = ? WHERE name = ?;", (l.widget.get(), name))
+                        cursor.commit()
+                        name = l.widget.get()
+                        log_btn.config(text=name)
+                        with open("login.txt", "w", encoding='utf-8') as file:
+                            file.write(f"{l.widget.get()}")
+
+            show_main(frame, [])
 
         frame = Objekty("Frame", master=w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5", highlightthickness=4)
         frame.pack(pady=50)
@@ -492,25 +787,94 @@ def user():
             pex.bind("<Button-1>", on_click)
 
         hide_pex = Objekty("Checkbutton", master=frame.widget, text="Pexeso hide", variable=hide, font=font, onvalue=True, command=hide_p)
-        hide_pex.grid(row=len(words) + 1, column=1, pady=10, padx=50)
+        hide_pex.grid(row=len(words) + 1, column=1, columnspan=2, pady=10, padx=50)
 
-        label = Objekty("Label", master=frame.widget, text="Změnit heslo", fg="black", font=font)
-        label.grid(row=len(words)+1, column=2, pady=10, padx=50)
+        bind_l = ["Změnit heslo", "Odhlásit se"]
+        for b in range(2):
+            label = Objekty("Label", master=frame.widget, text=bind_l[b], fg="black", font=font)
+            label.grid(row=len(words)+2, column=b+1, pady=10, padx=50)
+            label.bind("<Enter>", on_enter)
+            label.bind("<Leave>", on_leave)
+            label.bind("<Button-1>", lambda event: change_password(event, frame))
+
 
         zpet_btn = Objekty("Button", master=frame.widget, text="Zpět", bg="#ffafcc", font=font, width=5, command=lambda: show_main(frame, []))
-        zpet_btn.grid(row=len(words)+2, column=1, pady=10, padx=10)
-        uloz_btn = Objekty("Button", master=frame.widget, text="Uložit", bg="#ffafcc", font=font, width=5, command=lambda: show_main(frame, []))
-        uloz_btn.grid(row=len(words) + 2, column=2, pady=10, padx=10)
-
-        label.bind("<Enter>", on_enter)
-        label.bind("<Leave>", on_leave)
-        label.bind("<Button-1>", on_click)
+        zpet_btn.grid(row=len(words)+3, column=1, pady=10, padx=10)
+        uloz_btn = Objekty("Button", master=frame.widget, text="Uložit", bg="#ffafcc", font=font, width=5, command=safe)
+        uloz_btn.grid(row=len(words) + 3, column=2, pady=10, padx=10)
 def admin():
     if name == "admin":
-        w.unbind(f"<KeyPress-{key}>")
-        w.unbind(f"<KeyRelease-{key}>")
+        for key in keys.keys():
+            w.unbind(f"<KeyPress-{key}>")
+            w.unbind(f"<KeyRelease-{key}>")
+
+        sql = 0
+        image = "nastavení.ico"
+
+        def command(event):
+            nonlocal sql
+            print(input_e.get())
+            list_box_left.insert(END, input_e.get())
+            if input_e.get().upper() == "QUIT":
+                admin_w.destroy()
+            elif sql == 1:
+                if input_e.get().upper() == "END":
+                    sql = 0
+                    list_box_right.insert(END, "Odpojeno od databáze")
+                elif input_e.get().upper() == "TABLES":
+                    sql_root = Toplevel()
+                    sql_root.iconbitmap(image)
+                    cursor.execute("select * from sys.tables;")
+                    tables = cursor.fetchall()
+                    tables = [table[0] + "\n" for table in tables]
+                    Label(sql_root, text=tables).pack()
+                else:
+                    try:
+                        cursor.execute(input_e.get())
+                        tables = cursor.fetchall()
+                        tables = [str(table) + "\n" for table in tables]
+                        sql_root = Toplevel()
+                        sql_root.iconbitmap(image)
+                        Label(sql_root, text=tables).pack()
+
+                    except Exception as e:
+                        error = messagebox.showerror("Error", e)
+                input_e.delete(0, END)
+            elif input_e.get().upper() == "SQL":
+                list_box_right.insert(END, "Připojeno k databázi")
+                sql = 1
+                input_e.delete(0, END)
+                for key in keys.keys():
+                    w.bind(f"<KeyPress-{key}>", lambda event: update_key_state(event, True))
+                    w.bind(f"<KeyRelease-{key}>", lambda event: update_key_state(event, False))
+            else:
+                input_e.delete(0, END)
 
         admin_w = Toplevel()
+        admin_w.config(bg="black")
+        admin_w.geometry("1380x727")
+        admin_w.iconbitmap(image)
+
+        top_frame = Frame(admin_w, bg="black")
+        bottom_frame = Frame(admin_w, bg="black")
+        top_frame.pack(side="top", fill=BOTH, expand=True)
+        bottom_frame.pack(side="bottom", fill=X)
+        left_frame = Frame(top_frame, bg="black")
+        right_frame = Frame(top_frame, bg="black")
+        left_frame.pack(side="left", fill=BOTH, expand=True)
+        right_frame.pack(side="right", fill=BOTH, expand=True)
+
+        list_box_left = Listbox(left_frame, bg="black", fg="white", font=("Italy", 20), justify="left")
+        list_box_left.pack(fill=BOTH, expand=True)
+
+        list_box_right = Listbox(right_frame, bg="black", fg="white", font=("Italy", 20), justify="right")
+        list_box_right.pack(fill=BOTH, expand=True)
+
+        input_e = Entry(bottom_frame, font=("Italy", 20))
+        input_e.pack(fill=X)
+
+        admin_w.bind("<Return>", command)
+
 keys = {
     'a': False,
     'd': False,
@@ -547,7 +911,7 @@ try:
         'SERVER=KRAZAZI\SQLEXPRESS;'
         'DATABASE=Pexeso;'
         'UID=krazazi;'
-        'PWD=Pernicek@2024;'
+        'PWD=***********;'
     )
     cursor = conn.cursor()
     databaze = True
