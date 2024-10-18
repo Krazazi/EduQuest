@@ -3,6 +3,7 @@ from tkinter import *
 from tkinter import messagebox
 import random
 import pyodbc
+import time
 from PIL import Image, ImageTk
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -22,6 +23,10 @@ hide = BooleanVar(value=True)
 name = None
 agree = None
 databaze = None
+
+image = Image.open("eye-icon-vector-illustration.jpg")
+image = image.resize((10, 10), Image.LANCZOS)
+photo = ImageTk.PhotoImage(image)
 
 with open("login.txt", "r") as login:
     name = login.readline().strip()
@@ -112,6 +117,27 @@ def unhash_password(entry, result):
     hashed_password = result[0].encode('utf-8')
     heslo = bcrypt.checkpw(entry[1].widget.get().encode('utf-8'), hashed_password)
     return heslo
+def oko1(entry, oko):
+        if entry.widget.cget("show") == "*":
+            entry.config(show="")
+            oko.config(bg="grey")
+        else:
+            entry.config(show='*')
+            oko.config(bg="white")
+def rovnost(event, entry, l):
+        global agree
+        if entry[0].widget.get() == entry[1].widget.get():
+            l.config(text="Hesla se shodují!", fg="green")
+            agree = True
+
+        else:
+            l.config(text="Hesla se neshodují!", fg="red")
+            agree = False
+        l.place(x=240, y=113)
+def on_enter(event):
+    event.widget.config(fg="blue")
+def on_leave(event):
+    event.widget.config(fg="black")
 def new_password(frame, frame1):
     frame1.pack_forget()
 
@@ -133,25 +159,6 @@ def new_password(frame, frame1):
 
             show_main(frame1, [])
 
-    def oko1(entry, oko):
-        if entry.widget.cget("show") == "*":
-            entry.config(show="")
-            oko.config(bg="grey")
-        else:
-            entry.config(show='*')
-            oko.config(bg="white")
-
-    def rovnost(event, entry, l):
-        global agree
-        if entry[0].widget.get() == entry[1].widget.get():
-            l.config(text="Hesla se shodují!", fg="green")
-            agree = True
-
-        else:
-            l.config(text="Hesla se neshodují!", fg="red")
-            agree = False
-        l.place(x=240, y=113)
-
     def back():
         frame1.pack_forget()
         frame.pack(pady=50)
@@ -167,10 +174,6 @@ def new_password(frame, frame1):
         e = Objekty("Entry", master=frame1.widget, font=("Helvetica", 12), show="*")
         e.grid(row=x, column=1, pady=20, padx=30, sticky='nsew')
         entry.append(e)
-
-    image = Image.open("eye-icon-vector-illustration.jpg")
-    image = image.resize((10, 10), Image.LANCZOS)
-    photo = ImageTk.PhotoImage(image)
 
     oko = Objekty("Button", master=frame1.widget, image=photo, command=lambda: oko1(entry[0], oko))
     oko.photo = photo
@@ -225,12 +228,6 @@ def e_mail(event, frame):
             server.sendmail(sender_email, recipient_email, text)
 
             frame.pack_forget()
-
-            def on_enter(event):
-                event.widget.config(fg="blue")
-
-            def on_leave(event):
-                event.widget.config(fg="black")
 
             def back():
                 frame1.pack_forget()
@@ -299,20 +296,9 @@ def change_password(event, frame):
                 show_main(frame1, [])
             else:
                 error = messagebox.showerror("Chyba", "Nesprávné heslo!")
-    def oko1(entry, oko):
-        if entry.widget.cget("show") == "*":
-            entry.config(show="")
-            oko.config(bg="grey")
-        else:
-            entry.config(show='*')
-            oko.config(bg="white")
     def back():
         frame1.pack_forget()
         frame.pack(pady=50)
-    def on_enter(event):
-        event.widget.config(fg="blue")
-    def on_leave(event):
-        event.widget.config(fg="black")
 
     def email(event, entry):
         global name
@@ -335,10 +321,6 @@ def change_password(event, frame):
             e = Objekty("Entry", master=frame1.widget, font=("Helvetica", 12), show="*")
         e.grid(row=x, column=1, pady=20, padx=30, sticky='nsew')
         entry.append(e)
-
-    image = Image.open("eye-icon-vector-illustration.jpg")
-    image = image.resize((10, 10), Image.LANCZOS)
-    photo = ImageTk.PhotoImage(image)
 
     oko = Objekty("Button", master=frame1.widget, image=photo, command=lambda: oko1(entry[1], oko))
     oko.photo = photo
@@ -364,7 +346,7 @@ def change_password(event, frame):
 def main_pexeso(soubor, num):
     global w2
     pary = {}
-    cursor.execute(f'SELECT * FROM {soubor};')
+    cursor.execute(f'SELECT value FROM {soubor};')
     l = cursor.fetchall()
     for x in range(0, 16, 2):
         pary.update({f"{l[x][0]}": f"{l[x+1][0]}"})
@@ -382,6 +364,9 @@ def main_pexeso(soubor, num):
     buttons = []
     b1 = -1
     text1 = None
+    hotov = 0
+    spatne = 0
+    start_time = time.time()
 
     def reset_buttons(b, b2):
         nonlocal b1
@@ -393,7 +378,7 @@ def main_pexeso(soubor, num):
         b1 = -1
 
     def pexeso(btn, index):
-        nonlocal b1, text1
+        nonlocal b1, text1, hotov, spatne, start_time
         buttons[index].config(bg="#ffc8dd")
         if b1 == -1:
             b1 = index
@@ -409,8 +394,17 @@ def main_pexeso(soubor, num):
                 buttons[b1].config(bg="#bde0fe", state="disabled")
                 buttons[b2].config(bg="#bde0fe", state="disabled")
                 b1 = -1
+                hotov += 1
             else:
                 w.after(1000, lambda: reset_buttons(b1, b2))
+                spatne += 1
+            if hotov == 8:
+                end_time = time.time()
+                elapsed_time = round(end_time - start_time, 2)
+                if name != "Login":
+                    cursor.execute(f'INSERT INTO {soubor}(username, time,  chyb) VALUES (?, ?, ?);', (name, elapsed_time, spatne))
+                    cursor.commit()
+                message = messagebox.showinfo("Hotovo", f"Pexeso splněno s {spatne} chybami za čas {elapsed_time}")
 
     x = 0
     for i in range(4):
@@ -436,20 +430,78 @@ def play():
         w.grid_rowconfigure(0, weight=0)
         w.grid_rowconfigure(1, weight=0)
 
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        def zpet(main, entry, zpet):
+            main.pack_forget()
+            entry.pack_forget()
+            show_main(zpet, [])
+        def filtr(event, button):
+            if event.widget.get() == "":
+                new_txt_s = txt_s
+            else:
+                new_txt_s = [table for table in txt_s if table.startswith(f"p_{event.widget.get()}")]
+
+            for bt in button:
+                bt.grid_forget()
+
+            for idx, txt in enumerate(new_txt_s):
+                btn = Objekty("Button", master=button_frame, text=txt[2:], bg="#a0c4ff", width=30, height=3,
+                              command=lambda t=txt: main_pexeso(t, 1))
+                btn.grid(row=idx // 3, column=idx % 3, padx=10, pady=10)
+                button.append(btn)
+
+            button_frame.update_idletasks()
+            canvas.config(scrollregion=canvas.bbox("all"))
+
         cursor.execute('SELECT * FROM sys.tables;')
         txt_s = cursor.fetchall()
         txt_s = [table[0] for table in txt_s if table[0].startswith("p_")]
 
         button = []
-        frame = Objekty("Frame", master=w, bg="#f7f3e9")
-        frame.pack()
+
+        entry_frame = Frame(w)
+        entry_frame.pack(side=TOP)  # Zajišťuje, že entry je nahoře
+        input_e = Entry(entry_frame, font=("Italy", 20), width=53)
+        input_e.pack(side=LEFT)
+
+        main_frame = Frame(w, bg="#f7f3e9")
+        main_frame.pack(fill=BOTH, expand=1)
+
+        canvas = Canvas(main_frame, bg="#f7f3e9")
+        canvas.pack(side=LEFT, fill=BOTH, expand=1)
+
+        scrollbar = Scrollbar(main_frame, orient=VERTICAL, command=canvas.yview)
+        scrollbar.pack(side=RIGHT, fill=Y)
+
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        button_frame = Frame(canvas, bg="#f7f3e9")
+        canvas.create_window((0, 0), window=button_frame, anchor="nw")
+
         for idx, txt in enumerate(txt_s):
-            btn = Objekty("Button", master=frame.widget, text=txt[2:], bg="#a0c4ff", width=30, height=3, command=lambda t=txt: main_pexeso(t, 1))
+            btn = Objekty("Button", master=button_frame, text=txt[2:], bg="#a0c4ff", width=30, height=3,
+                          command=lambda t=txt: main_pexeso(t, 1))
             btn.grid(row=idx // 3, column=idx % 3, padx=10, pady=10)
             button.append(btn)
+            if name != "Login":
+                cursor.execute(f"select username from {txt}")
+                pexes = cursor.fetchall()
+                pexes = [item[0] for item in pexes]
+                if name in pexes:
+                    btn.config(bg="#B2E6A0")
 
-        zpet_play = Objekty("Button", master=frame.widget, text="Zpět", bg="#ffafcc", font=font, command=lambda: show_main(frame, []))
-        zpet_play.grid(row=len(txt_s) // 2 + 1, column=1, pady=20)
+        button_frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+        zpet_button_frame = Frame(w)
+        zpet_button_frame.pack(side=BOTTOM, pady=10)
+        zpet_play = Objekty("Button", master=zpet_button_frame, text="Zpět", bg="#ffafcc", font=font,
+                            command=lambda: zpet(main_frame, entry_frame, zpet_button_frame))
+        zpet_play.pack()
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        input_e.bind('<KeyRelease>', lambda event: filtr(event, button))
 def create():
     if not databaze:
         messagebox.showerror("SQL connecting Error", "Nejste připojen k Databázi!")
@@ -464,9 +516,9 @@ def create():
         w.grid_rowconfigure(1, weight=0)
 
         def vytvoření(pex, namex, name_entry, btn, zpet):
-            p = [k.get() for k in pex]
-            n = namex.get().replace('-', '_')
-            cursor.execute(f'CREATE TABLE p_{n}(value TEXT);')
+            p = [k.widget.get() for k in pex]
+            n = namex.widget.get().replace('-', '_')
+            cursor.execute(f'CREATE TABLE p_{n}(value TEXT, username NVARCHAR(255), time DATETIME);')
             cursor.execute(f'INSERT INTO main(name) VALUES (?);', (n))
             cursor.execute(f"SELECT pexes_v FROM login WHERE name LIKE ?", (name,))
             cursor.execute('UPDATE login SET pexes_v = ? WHERE name = ?', (cursor.fetchone()[0] + 1, name))
@@ -478,9 +530,9 @@ def create():
 
             conn.commit()
 
-            zpet(pex, namex, name_entry, btn, zpet)
+            zpet_menu(pex, namex, name_entry, btn, zpet)
 
-        def zpet(entries, name_entry, name_l, start_btn, zpet_btn):
+        def zpet_menu(entries, name_entry, name_l, start_btn, zpet_btn):
             for i in entries:
                 i.grid_forget()
             zpet_btn.grid_forget()
@@ -511,7 +563,7 @@ def create():
                            command=lambda: vytvoření(entries, name_entry, name_l, start_btn, zpet_btn))
         start_btn.grid(row=9, column=1, pady=10)
         zpet_btn = Objekty("Button", master=w, text="Zpět", bg="#ffafcc", font=font, width=15,
-                          command=lambda: zpet(entries, name_entry, name_l, start_btn, zpet_btn))
+                          command=lambda: zpet_menu(entries, name_entry, name_l, start_btn, zpet_btn))
         zpet_btn.grid(row=9, column=0, pady=10)
 def sign_up():
     if not databaze:
@@ -546,21 +598,6 @@ def sign_up():
                     with open("login.txt", "w", encoding='utf-8') as file:
                         file.write(f"{entry[1].widget.get()}")
                 show_main(frame, entry)
-
-        def oko1(entry, oko):
-            if entry.widget.cget("show") == "*":
-                entry.config(show="")
-                oko.config(bg="grey")
-            else:
-                entry.config(show='*')
-                oko.config(bg="white")
-
-        def rovnost(event, entry, l):
-            if entry[2].widget.get() == entry[3].widget.get():
-                l.config(text="Hesla se shodují!", fg="green")
-            else:
-                l.config(text="Hesla se neshodují!", fg="red")
-            l.place(x=210, y=170)
 
         def nick(event, entry, l):
             global agree
@@ -652,20 +689,6 @@ def login():
                 else:
                     error = messagebox.showerror("Nelze přihlásit", "Nesprávné heslo!")
 
-        def oko1(entry, oko):
-            if entry.widget.cget("show") == "*":
-                entry.config(show="")
-                oko.config(bg="grey")
-            else:
-                entry.config(show='*')
-                oko.config(bg="white")
-
-        def on_enter(event):
-            event.widget.config(fg="blue")
-
-        def on_leave(event):
-            event.widget.config(fg="black")
-
         def email(event, entry):
             global name
             name = entry[0].widget.get()
@@ -685,10 +708,6 @@ def login():
                 e = Objekty("Entry", master=frame.widget, font=("Helvetica", 12))
             e.grid(row=x, column=1, pady=20, padx=30, sticky='nsew')
             entry.append(e)
-
-        image = Image.open("eye-icon-vector-illustration.jpg")
-        image = image.resize((10, 10), Image.LANCZOS)
-        photo = ImageTk.PhotoImage(image)
 
         oko = Objekty("Button", master=frame.widget, image=photo, command=lambda: oko1(entry[1], oko))
         oko.photo = photo
@@ -728,10 +747,6 @@ def user():
         w.grid_columnconfigure(0, weight=1)
         w.grid_columnconfigure(1, weight=1)
 
-        def on_enter(event):
-            event.widget.config(fg="blue")
-        def on_leave(event):
-            event.widget.config(fg="black")
         def on_click(event):
             print("Label byl kliknut!")
 
@@ -768,6 +783,14 @@ def user():
 
             show_main(frame, [])
 
+        def odhlasit(event, frame):
+            global name
+            name = "Login"
+            log_btn.config(text=name)
+            with open("login.txt", "w") as login:
+                login.write("")
+            show_main(frame, [])
+
         frame = Objekty("Frame", master=w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5", highlightthickness=4)
         frame.pack(pady=50)
 
@@ -795,7 +818,10 @@ def user():
             label.grid(row=len(words)+2, column=b+1, pady=10, padx=50)
             label.bind("<Enter>", on_enter)
             label.bind("<Leave>", on_leave)
-            label.bind("<Button-1>", lambda event: change_password(event, frame))
+            if b == 0:
+                label.bind("<Button-1>", lambda event: change_password(event, frame))
+            else:
+                label.bind("<Button-1>", lambda event: odhlasit(event, frame))
 
 
         zpet_btn = Objekty("Button", master=frame.widget, text="Zpět", bg="#ffafcc", font=font, width=5, command=lambda: show_main(frame, []))
@@ -813,7 +839,6 @@ def admin():
 
         def command(event):
             nonlocal sql
-            print(input_e.get())
             list_box_left.insert(END, input_e.get())
             if input_e.get().upper() == "QUIT":
                 admin_w.destroy()
@@ -911,7 +936,7 @@ try:
         'SERVER=KRAZAZI\SQLEXPRESS;'
         'DATABASE=Pexeso;'
         'UID=krazazi;'
-        'PWD=***********;'
+        'PWD=********;'
     )
     cursor = conn.cursor()
     databaze = True
