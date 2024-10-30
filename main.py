@@ -2,7 +2,7 @@ import bcrypt
 from tkinter import *
 from tkinter import messagebox
 import random
-import pyodbc
+import psycopg2
 import time
 from PIL import Image, ImageTk
 import smtplib
@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 
 w = Tk()
 w.title("EduQuest")
-w.configure(bg="#f7f3e9")  # Jemná pastelová barva pozadí
+w.configure(bg="#f7f3e9")
 w.geometry("800x400")
 w.iconbitmap("OIP.ico")
 w.resizable(False, False)
@@ -124,16 +124,6 @@ def oko1(entry, oko):
         else:
             entry.config(show='*')
             oko.config(bg="white")
-def rovnost(event, entry, l):
-        global agree
-        if entry[0].widget.get() == entry[1].widget.get():
-            l.config(text="Hesla se shodují!", fg="green")
-            agree = True
-
-        else:
-            l.config(text="Hesla se neshodují!", fg="red")
-            agree = False
-        l.place(x=240, y=113)
 def on_enter(event):
     event.widget.config(fg="blue")
 def on_leave(event):
@@ -152,8 +142,8 @@ def new_password(frame, frame1):
             error = messagebox.showerror("Nelze přihlásit", "Prázdné pole")
         else:
             password = create_hash(entry[0])
-            cursor.execute(f"UPDATE login SET password = ? WHERE name = ?;", (password, name))
-            cursor.commit()
+            cursor.execute(f"UPDATE login SET password = %s WHERE name = %s;", (password, name))
+            conn.commit()
             notification = messagebox.showinfo("Info", "Heslo bylo uspěšně změněno!")
             log_btn.config(text=name)
 
@@ -162,6 +152,17 @@ def new_password(frame, frame1):
     def back():
         frame1.pack_forget()
         frame.pack(pady=50)
+
+    def rovnost(event, entry, l):
+        global agree
+        if entry[0].widget.get() == entry[1].widget.get():
+            l.config(text="Hesla se shodují!", fg="green")
+            agree = True
+
+        else:
+            l.config(text="Hesla se neshodují!", fg="red")
+            agree = False
+        l.place(x=240, y=113)
 
     name = ["new password:", "confrim password:"]
     entry = []
@@ -198,9 +199,10 @@ def e_mail(event, frame):
     global name
     try:
         code = random.randrange(111111, 999999)
-        sender_email = "123krz@seznam.cz"
-        sender_password = "**********"
-        recipient_email = cursor.execute("select email from login where name like ?", (name, )).fetchall()[0][0]
+        sender_email = "**********"
+        sender_password = "**************"
+        cursor.execute("select email from login where name like %s", (name,))
+        recipient_email = cursor.fetchall()[0][0]
         subject = "[EduQuest] Oveření vašeho zařízení"
         body = f""" Ahoj {name}!
 
@@ -282,7 +284,7 @@ def change_password(event, frame):
 
     def change(entry, frame):
         global name
-        cursor.execute("SELECT password FROM login WHERE name = ?", (entry[0].widget.get(),))
+        cursor.execute("SELECT password FROM login WHERE name = %s", (entry[0].widget.get()))
         result = cursor.fetchone()
         if not result:
             error = messagebox.showerror("Nelze přihlásit", "Nickname neexistuje!")
@@ -291,7 +293,7 @@ def change_password(event, frame):
             if heslo:
                 password = create_hash(entry[2])
                 cursor.execute(f"UPDATE login SET password = ? WHERE name = ?;", (password, entry[0].widget.get()))
-                cursor.commit()
+                conn.commit()
 
                 show_main(frame1, [])
             else:
@@ -402,8 +404,28 @@ def main_pexeso(soubor, num):
                 end_time = time.time()
                 elapsed_time = round(end_time - start_time, 2)
                 if name != "Login":
-                    cursor.execute(f'INSERT INTO {soubor}(username, time,  chyb) VALUES (?, ?, ?);', (name, elapsed_time, spatne))
-                    cursor.commit()
+                    try:
+                        cursor.execute(f"SELECT username, time, chyb FROM {soubor} WHERE username = %s;", (name,))
+                        seznam = list(cursor.fetchall()[0])
+
+                        seznam[2] = int(seznam[2])
+
+                        if seznam[2] > spatne:
+                            seznam[2] = spatne
+                            seznam[1] = elapsed_time
+                        elif seznam[1] > elapsed_time:
+                            seznam[1] = elapsed_time
+
+                        cursor.execute(f'UPDATE {soubor} SET time = %s, chyb = %s WHERE username = %s',
+                                       (seznam[1], seznam[2], seznam[0]))
+
+                    except:
+                        cursor.execute(f"insert into {name} (pexeso) values (%s)", (soubor,))
+                        cursor.execute(f"SELECT pexeso FROM login WHERE name LIKE %s", (name,))
+                        cursor.execute('UPDATE login SET pexeso = %s WHERE name = %s', (cursor.fetchone()[0] + 1, name))
+                        cursor.execute(f'INSERT INTO {soubor}(username, time,  chyb) VALUES (%s, %s, %s);', (name, elapsed_time, spatne))
+                    conn.commit()
+
                 message = messagebox.showinfo("Hotovo", f"Pexeso splněno s {spatne} chybami za čas {elapsed_time}")
 
     x = 0
@@ -440,29 +462,37 @@ def play():
             if event.widget.get() == "":
                 new_txt_s = txt_s
             else:
-                new_txt_s = [table for table in txt_s if table.startswith(f"p_{event.widget.get()}")]
+                new_txt_s = [table for table in txt_s if table.startswith(f"p__{event.widget.get()}")]
 
             for bt in button:
                 bt.grid_forget()
 
             for idx, txt in enumerate(new_txt_s):
-                btn = Objekty("Button", master=button_frame, text=txt[2:], bg="#a0c4ff", width=30, height=3,
+                btn = Objekty("Button", master=button_frame, text=txt[3:], bg="#a0c4ff", width=30, height=3,
                               command=lambda t=txt: main_pexeso(t, 1))
                 btn.grid(row=idx // 3, column=idx % 3, padx=10, pady=10)
                 button.append(btn)
+                if name != "Login":
+                    cursor.execute(f"select username from {txt}")
+                    pexes = cursor.fetchall()
+                    pexes = [item[0] for item in pexes]
+                    if name in pexes:
+                        btn.config(bg="#B2E6A0")
 
             button_frame.update_idletasks()
             canvas.config(scrollregion=canvas.bbox("all"))
 
-        cursor.execute('SELECT * FROM sys.tables;')
+        cursor.execute('SELECT * FROM information_schema.tables WHERE table_schema = \'public\';')
         txt_s = cursor.fetchall()
-        txt_s = [table[0] for table in txt_s if table[0].startswith("p_")]
+        txt_s = [table[2] for table in txt_s if table[2].startswith("p__")]
 
         button = []
 
         entry_frame = Frame(w)
-        entry_frame.pack(side=TOP)  # Zajišťuje, že entry je nahoře
-        input_e = Entry(entry_frame, font=("Italy", 20), width=53)
+        entry_frame.pack(side=TOP)
+        l_input = Label(entry_frame, font=("Italy", 20), text="Hledat:")
+        l_input.pack(side=LEFT)
+        input_e = Entry(entry_frame, font=("Italy", 20), width=47)
         input_e.pack(side=LEFT)
 
         main_frame = Frame(w, bg="#f7f3e9")
@@ -480,7 +510,7 @@ def play():
         canvas.create_window((0, 0), window=button_frame, anchor="nw")
 
         for idx, txt in enumerate(txt_s):
-            btn = Objekty("Button", master=button_frame, text=txt[2:], bg="#a0c4ff", width=30, height=3,
+            btn = Objekty("Button", master=button_frame, text=txt[3:], bg="#a0c4ff", width=30, height=3,
                           command=lambda t=txt: main_pexeso(t, 1))
             btn.grid(row=idx // 3, column=idx % 3, padx=10, pady=10)
             button.append(btn)
@@ -518,12 +548,13 @@ def create():
         def vytvoření(pex, namex, name_entry, btn, zpet):
             p = [k.widget.get() for k in pex]
             n = namex.widget.get().replace('-', '_')
-            cursor.execute(f'CREATE TABLE p_{n}(value TEXT, username NVARCHAR(255), time DATETIME);')
-            cursor.execute(f'INSERT INTO main(name) VALUES (?);', (n))
-            cursor.execute(f"SELECT pexes_v FROM login WHERE name LIKE ?", (name,))
-            cursor.execute('UPDATE login SET pexes_v = ? WHERE name = ?', (cursor.fetchone()[0] + 1, name))
+            cursor.execute(f'CREATE TABLE p__{n}(value TEXT, username varchar(255), time FLOAT, chyb varchar(255));')
+            cursor.execute(f'INSERT INTO main(name) VALUES (%s);', (n, ))
+            cursor.execute(f"insert into {name} (pexes_v) values (%s)", (f"p__{n}", ))
+            cursor.execute(f"SELECT pexes_v FROM login WHERE name LIKE %s", (name, ))
+            cursor.execute('UPDATE login SET pexes_v = %s WHERE name = %s', (cursor.fetchone()[0] + 1, name))
             for i in p:
-                cursor.execute(f'INSERT INTO p_{n}(value) VALUES (?);', (i,))
+                cursor.execute(f'INSERT INTO p__{n}(value) VALUES (%s);', (i, ))
 
             hotovo = messagebox.showinfo("Vytvořeno",
                                          "Pexeso bylo úspěšně vytvořeno.\nMůžete si ho nyní zahrát v Play!")
@@ -589,9 +620,11 @@ def sign_up():
                 error = messagebox.showerror("Nelze přihlásit", "Prázdné pole")
             else:
                 password = create_hash(entry[2])
-                cursor.execute('INSERT INTO login(name, password, email, pexeso, pexes_v) VALUES (?, ?, ?, ?, ?);',
+                cursor.execute('INSERT INTO login(name, password, email, pexeso, pexes_v) VALUES (%s, %s, %s, %s, %s);',
                                (entry[1].widget.get(), password, entry[0].widget.get(), 0, 0))
-                cursor.commit()
+                cursor.execute(
+                    f'CREATE TABLE {entry[1].widget.get()} (pexeso varchar(255), pexes_v varchar(255));')
+                conn.commit()
                 name = entry[1].widget.get()
                 log_btn.config(text=name)
                 if var.get() == 1:
@@ -604,12 +637,23 @@ def sign_up():
             for x in nickname:
                 if x[0] == entry[1].widget.get():
                     l.config(text="nickname už je použitý!", fg="red")
-                    l.place(x=210, y=78)
+                    l.place(x=210, y=80)
                     agree = False
                     break
                 else:
                     agree = True
                     l.place_forget()
+
+        def rovnost(event, entry, l):
+            global agree
+            if entry[2].widget.get() == entry[3].widget.get():
+                l.config(text="Hesla se shodují!", fg="green")
+                agree = True
+
+            else:
+                l.config(text="Hesla se neshodují!", fg="red")
+                agree = False
+            l.place(x=210, y=170)
 
         name = ["e-mail:", "nickname:", "password:", "confrim password:"]
         entry = []
@@ -673,7 +717,7 @@ def login():
 
         def login_second(entry, frame, var):
             global name
-            cursor.execute("SELECT password FROM login WHERE name = ?", (entry[0].widget.get(),))
+            cursor.execute("SELECT password FROM login WHERE name = %s", (entry[0].widget.get(), ))
             result = cursor.fetchone()
             if not result:
                 error = messagebox.showerror("Nelze přihlásit", "Nickname neexistuje!")
@@ -733,6 +777,246 @@ def login():
         label.bind("<Enter>", on_enter)
         label.bind("<Leave>", on_leave)
         label.bind("<Button-1>", lambda event: email(event, entry))
+def pexeso_splneno(frame1):
+    global name
+    frame1.pack_forget()
+
+    w.grid_rowconfigure(0, weight=1)
+    w.grid_rowconfigure(1, weight=1)
+    w.grid_columnconfigure(0, weight=1)
+    w.grid_columnconfigure(1, weight=1)
+
+    def on_click(event):
+        main_pexeso(f'p__{event.widget.cget("text")}', 1)
+
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def filtr(event):
+        if event.widget.get() == "":
+            new_pexeso = pexeso
+        else:
+            new_pexeso = [p for p in pexeso if p.startswith(f"p__{event.widget.get()}")]
+
+        for widget in button_frame.winfo_children():
+            widget.destroy()
+
+        i = 0
+        for s in new_pexeso:
+            p_frame = Frame(button_frame, bg='lightblue')
+            p_frame.grid(row=i, column=0)
+            pex = Objekty("Label", master=p_frame, text=s[3:], bg="#f7f3e9", font=("Italy", 20), width=15)
+            pex.grid(row=0, column=0, pady=10, padx=50)
+            try:
+                cursor.execute(f"select time, chyb from {s} where username = %s", (name,))
+                info = cursor.fetchall()
+                predpis = [" sekund", " chyb"]
+                for x in range(2):
+                    l = Objekty("Label", master=p_frame, text=str(info[0][x]) + predpis[x], bg="#f7f3e9",
+                                font=("Italy", 20))
+                    l.grid(row=0, column=x + 1, pady=10, padx=50)
+                    i += 1
+                pex.bind("<Enter>", on_enter)
+                pex.bind("<Leave>", on_leave)
+                pex.bind("<Button-1>", on_click)
+            except:
+                l = Objekty("Label", master=p_frame, text="Tabulku vymazal vlastník", bg="#f7f3e9", font=("Italy", 20))
+                l.grid(row=0, column=1, columnspan=2, pady=10, padx=50)
+                i += 1
+
+        conn.rollback()
+        button_frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+    def zpet(main, entry, zpet):
+        main.pack_forget()
+        entry.pack_forget()
+        zpet.pack_forget()
+        help_btn.place(x=15, y=325)
+        exit_btn.place(x=670, y=325)
+        user()
+
+    entry_frame = Frame(w)
+    entry_frame.pack(side=TOP)
+    l_input = Label(entry_frame, font=("Italy", 20), text="Hledat:")
+    l_input.pack(side=LEFT)
+    input_e = Entry(entry_frame, font=("Italy", 20), width=47)
+    input_e.pack(side=LEFT)
+
+    main_frame = Frame(w, bg="#f7f3e9")
+    main_frame.pack(fill=BOTH, expand=1)
+
+    canvas = Canvas(main_frame, bg="#f7f3e9")
+    canvas.pack(side=LEFT, fill=BOTH, expand=1)
+
+    scrollbar = Scrollbar(main_frame, orient=VERTICAL, command=canvas.yview)
+    scrollbar.pack(side=RIGHT, fill=Y)
+
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    button_frame = Frame(canvas, bg="#f7f3e9")
+    canvas.create_window((0, 0), window=button_frame, anchor="nw")
+
+    cursor.execute(f"SELECT pexeso FROM {name}")
+    pexeso = cursor.fetchall()
+    pexeso = [p[0] for p in pexeso if p[0] != None]
+    i = 0
+    for s in pexeso:
+        p_frame = Frame(button_frame, bg='lightblue')
+        p_frame.grid(row=i, column=0)
+        pex = Objekty("Label", master=p_frame, text=s[3:], bg="#f7f3e9", font=("Italy", 20), width=15)
+        pex.grid(row=0, column=0, pady=10, padx=50)
+        try:
+            cursor.execute(f"select time, chyb from {s} where username = %s", (name,))
+            info = cursor.fetchall()
+            predpis = [" sekund", " chyb"]
+            for x in range(2):
+                l = Objekty("Label", master=p_frame, text=str(info[0][x]) + predpis[x], bg="#f7f3e9", font=("Italy", 20))
+                l.grid(row=0, column=x + 1, pady=10, padx=50)
+                i += 1
+            pex.bind("<Enter>", on_enter)
+            pex.bind("<Leave>", on_leave)
+            pex.bind("<Button-1>", on_click)
+        except:
+            l = Objekty("Label", master=p_frame, text="Tabulku vymazal vlastník", bg="#f7f3e9", font=("Italy", 20))
+            l.grid(row=0, column=1, columnspan=2, pady=10, padx=50)
+            i += 1
+
+    conn.rollback()
+    button_frame.update_idletasks()
+    canvas.config(scrollregion=canvas.bbox("all"))
+
+    zpet_button_frame = Frame(w)
+    zpet_button_frame.pack(side=BOTTOM, pady=10)
+
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)
+    input_e.bind('<KeyRelease>', lambda event: filtr(event))
+
+    zpet_btn = Objekty("Button", master=zpet_button_frame, text="Zpět", bg="#ffafcc", font=font, width=5,
+                       command=lambda: zpet(main_frame, entry_frame, zpet_button_frame))
+    zpet_btn.pack()
+def pexeso_vytvoreno(frame1):
+
+    global name
+    frame1.pack_forget()
+
+    w.grid_rowconfigure(0, weight=1)
+    w.grid_rowconfigure(1, weight=1)
+    w.grid_columnconfigure(0, weight=1)
+    w.grid_columnconfigure(1, weight=1)
+
+    def on_click(event):
+        main_pexeso(f'p__{event.widget.cget("text")}', 1)
+
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def filtr(event):
+        if event.widget.get() == "":
+            new_pexeso = pexeso
+        else:
+            new_pexeso = [p for p in pexeso if p.startswith(f"p__{event.widget.get()}")]
+
+        for widget in button_frame.winfo_children():
+            widget.destroy()
+
+        i = 0
+        for s in new_pexeso:
+            p_frame = Frame(button_frame, bg='lightblue', width=70, height=10)
+            p_frame.grid(row=i, column=0)
+            pex = Objekty("Label", master=p_frame, text=s[3:], bg="#f7f3e9", font=("Italy", 20), width=20)
+            pex.grid(row=0, column=0, pady=10, padx=50)
+            pex.bind("<Enter>", on_enter)
+            pex.bind("<Leave>", on_leave)
+            pex.bind("<Button-1>", on_click)
+            l = Objekty("Label", master=p_frame, text="DELETE", bg="#f7f3e9", font=("Italy", 20))
+            l.grid(row=0, column=1, pady=10, padx=50)
+            l.bind("<Enter>", on_enter_red)
+            l.bind("<Leave>", on_leave)
+            l.bind("<Button-1>", lambda event: delete(event, s))
+            print(s)
+            i += 1
+
+        button_frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+    def zpet(main, entry, zpet):
+        main.pack_forget()
+        entry.pack_forget()
+        zpet.pack_forget()
+        help_btn.place(x=15, y=325)
+        exit_btn.place(x=670, y=325)
+        user()
+
+    def on_enter_red(event):
+        event.widget.config(fg="red")
+
+    def delete(event, deleted_pexeso):
+        ask = messagebox.askquestion("Question", "Opravdu chcete vymazat tabulku?")
+        if ask:
+            cursor.execute(f"drop table {deleted_pexeso}")
+            cursor.execute(f"DELETE FROM {name} WHERE pexes_v = %s;", (deleted_pexeso, ))
+            cursor.execute(f"SELECT pexes_v FROM login WHERE name LIKE %s", (name,))
+            cursor.execute('UPDATE login SET pexes_v = %s WHERE name = %s', (cursor.fetchone()[0] - 1, name))
+            conn.commit()
+            conn.rollback()
+            main_frame.pack_forget()
+            entry_frame.pack_forget()
+            zpet_button_frame.pack_forget()
+            pexeso_vytvoreno(frame1)
+
+    entry_frame = Frame(w)
+    entry_frame.pack(side=TOP)
+    l_input = Label(entry_frame, font=("Italy", 20), text="Hledat:")
+    l_input.pack(side=LEFT)
+    input_e = Entry(entry_frame, font=("Italy", 20), width=47)
+    input_e.pack(side=LEFT)
+
+    main_frame = Frame(w, bg="#f7f3e9")
+    main_frame.pack(fill=BOTH, expand=1)
+
+    canvas = Canvas(main_frame, bg="#f7f3e9")
+    canvas.pack(side=LEFT, fill=BOTH, expand=1)
+
+    scrollbar = Scrollbar(main_frame, orient=VERTICAL, command=canvas.yview)
+    scrollbar.pack(side=RIGHT, fill=Y)
+
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    button_frame = Frame(canvas, bg="#f7f3e9")
+    canvas.create_window((0, 0), window=button_frame, anchor="nw")
+
+    cursor.execute(f"SELECT pexes_v FROM {name}")
+    pexeso = cursor.fetchall()
+    pexeso = [p[0] for p in pexeso if p[0] != None]
+    i = 0
+    for s in pexeso:
+        p_frame = Frame(button_frame, bg='lightblue', width=70, height=10)
+        p_frame.grid(row=i, column=0)
+        pex = Objekty("Label", master=p_frame, text=s[3:], bg="#f7f3e9", font=("Italy", 20), width=20)
+        pex.grid(row=0, column=0, pady=10, padx=50)
+        pex.bind("<Enter>", on_enter)
+        pex.bind("<Leave>", on_leave)
+        pex.bind("<Button-1>", on_click)
+        l2 = Objekty("Label", master=p_frame, text="DELETE", bg="#f7f3e9", font=("Italy", 20))
+        l2.grid(row=0, column=1, pady=10, padx=50)
+        l2.bind("<Enter>", on_enter_red)
+        l2.bind("<Leave>", on_leave)
+        l2.bind("<Button-1>", lambda event, sp=s: delete(event, sp))
+        i += 1
+
+    button_frame.update_idletasks()
+    canvas.config(scrollregion=canvas.bbox("all"))
+
+    zpet_button_frame = Frame(w)
+    zpet_button_frame.pack(side=BOTTOM, pady=10)
+
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)
+    input_e.bind('<KeyRelease>', lambda event: filtr(event))
+
+    zpet_btn = Objekty("Button", master=zpet_button_frame, text="Zpět", bg="#ffafcc", font=font, width=5,
+                       command=lambda: zpet(main_frame, entry_frame, zpet_button_frame))
+    zpet_btn.pack()
 def user():
     global name
     if not databaze:
@@ -746,9 +1030,6 @@ def user():
         w.grid_rowconfigure(1, weight=1)
         w.grid_columnconfigure(0, weight=1)
         w.grid_columnconfigure(1, weight=1)
-
-        def on_click(event):
-            print("Label byl kliknut!")
 
         def hide_p():
             if hide.get():
@@ -774,8 +1055,8 @@ def user():
                     if not agree:
                         error = messagebox.showerror("Error", "Nickname už je použit")
                     else:
-                        cursor.execute(f"UPDATE login SET name = ? WHERE name = ?;", (l.widget.get(), name))
-                        cursor.commit()
+                        cursor.execute(f"UPDATE login SET name = %s WHERE name = %s;", (l.widget.get(), name))
+                        conn.commit()
                         name = l.widget.get()
                         log_btn.config(text=name)
                         with open("login.txt", "w", encoding='utf-8') as file:
@@ -791,6 +1072,18 @@ def user():
                 login.write("")
             show_main(frame, [])
 
+        def pexeso_s(event):
+            if int(p[0][0]) != 0:
+                help_btn.place_forget()
+                exit_btn.place_forget()
+                pexeso_splneno(frame)
+
+        def pexeso_v(event):
+            if int(p[1][0]) != 0:
+                help_btn.place_forget()
+                exit_btn.place_forget()
+                pexeso_vytvoreno(frame)
+
         frame = Objekty("Frame", master=w, bg='lightblue', width=600, height=400, highlightbackground="#ffd6a5", highlightthickness=4)
         frame.pack(pady=50)
 
@@ -800,14 +1093,19 @@ def user():
 
         words = ["pexeso", "pexes_v"]
         proslov = ["Splněných Pexes: ", "Vytvořených Pexes: "]
+        p = []
         for s in range(len(words)):
-            cursor.execute(f"SELECT {words[s]} FROM login WHERE name LIKE ?", (name,))
+            cursor.execute(f"SELECT {words[s]} FROM login WHERE name LIKE %s", (name,))
             pexeso = cursor.fetchone()
+            p.append(pexeso)
             pex = Objekty("Label", master=frame.widget, text=proslov[s]+str(pexeso[0]), bg="#f7f3e9", font=font)
             pex.grid(row=s+1, column=1, columnspan=2, pady=10, padx=50)
             pex.bind("<Enter>", on_enter)
             pex.bind("<Leave>", on_leave)
-            pex.bind("<Button-1>", on_click)
+            if words[s] == "pexeso":
+                pex.bind("<Button-1>", pexeso_s)
+            else:
+                pex.bind("<Button-1>", pexeso_v)
 
         hide_pex = Objekty("Checkbutton", master=frame.widget, text="Pexeso hide", variable=hide, font=font, onvalue=True, command=hide_p)
         hide_pex.grid(row=len(words) + 1, column=1, columnspan=2, pady=10, padx=50)
@@ -828,6 +1126,52 @@ def user():
         zpet_btn.grid(row=len(words)+3, column=1, pady=10, padx=10)
         uloz_btn = Objekty("Button", master=frame.widget, text="Uložit", bg="#ffafcc", font=font, width=5, command=safe)
         uloz_btn.grid(row=len(words) + 3, column=2, pady=10, padx=10)
+def help():
+    if not databaze:
+        messagebox.showerror("SQL connecting Error", "Nejste připojen k Databázi!")
+    else:
+        hide_main(1)
+
+        def back(main):
+            show_main(main, [])
+
+        def poslat_email(text_box):
+            sender_email = "************"
+            sender_password = "**********"
+            cursor.execute("select email from login where name like %s", (name,))
+            recipient_email = "********************"
+            subject = f"Žádost o pomoc {cursor.fetchone()[0]}[EduQuest]"
+            body = text_box.get("1.0", END)
+
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = recipient_email
+            msg['Subject'] = subject
+
+            msg.attach(MIMEText(body, 'plain'))
+            server = smtplib.SMTP('smtp.seznam.cz', 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            text = msg.as_string()
+            server.sendmail(sender_email, recipient_email, text)
+
+            msg = messagebox.showinfo("E-mail", "E-mail byl odeslán")
+            text_box.delete("1.0", END)
+
+        main_frame = Frame(w, bg="#f7f3e9")
+        main_frame.pack(fill='both', expand=True)
+        zpet_button_frame = Frame(main_frame, bg="#f7f3e9")
+        zpet_button_frame.pack(side=BOTTOM, pady=10)
+        zpet_play = Objekty("Button", master=zpet_button_frame, text="Zpět", bg="#ffafcc", font=font,
+                            command=lambda: back(main_frame))
+        zpet_play.pack(side=LEFT, padx=50)
+        poslat = Button(zpet_button_frame, text="Odeslat", bg="#ffafcc", font=font,
+                        command=lambda: poslat_email(text_box))
+        poslat.pack(side=RIGHT, padx=50)
+        text_frame = Frame(main_frame)
+        text_frame.pack(side=TOP, fill='both', expand=True)
+        text_box = Text(text_frame, wrap='word', font=("Arial", 12), undo=True)
+        text_box.pack(expand=True, fill='both', padx=10, pady=10)
 def admin():
     if name == "admin":
         for key in keys.keys():
@@ -849,9 +1193,9 @@ def admin():
                 elif input_e.get().upper() == "TABLES":
                     sql_root = Toplevel()
                     sql_root.iconbitmap(image)
-                    cursor.execute("select * from sys.tables;")
+                    cursor.execute('SELECT * FROM information_schema.tables WHERE table_schema = \'public\';')
                     tables = cursor.fetchall()
-                    tables = [table[0] + "\n" for table in tables]
+                    tables = [table[2] + "\n" for table in tables]
                     Label(sql_root, text=tables).pack()
                 else:
                     try:
@@ -872,6 +1216,13 @@ def admin():
                 for key in keys.keys():
                     w.bind(f"<KeyPress-{key}>", lambda event: update_key_state(event, True))
                     w.bind(f"<KeyRelease-{key}>", lambda event: update_key_state(event, False))
+            elif "HESLO" in input_e.get().upper():
+                cursor.execute("SELECT password FROM login WHERE name = %s", (input_e.get()[6:], ))
+                result = cursor.fetchone()
+                if not result:
+                    error = messagebox.showerror("Nelze zjistit heslo", "Nickname neexistuje!")
+                else:
+                    hashed_password = result[0].encode('utf-8')
             else:
                 input_e.delete(0, END)
 
@@ -925,19 +1276,20 @@ sign_up_btn = Objekty("Button", master=w, text="Sign up", bg="#a0c4ff", width=20
 sign_up_btn.grid(row=3, column=0, pady=20, padx=290)
 exit_btn = Objekty("Button", master=w, text="Quit", bg="#a0c4ff", width=10, height=2, font=font, command=lambda: w.quit())
 exit_btn.place(x=670, y=325)
-help_btn = Objekty("Button", master=w, text="Help", bg="#a0c4ff", width=10, height=2, font=font, command=lambda: w.quit())
+help_btn = Objekty("Button", master=w, text="Help", bg="#a0c4ff", width=10, height=2, font=font, command=help)
 help_btn.place(x=15, y=325)
 log_btn = Objekty("Button", master=w, text=name, bg="#ffafcc", font=font, command=user)
 log_btn.place(x=700, y=15)
 
 try:
-    conn = pyodbc.connect(
-        'DRIVER={SQL Server};'
-        'SERVER=KRAZAZI\SQLEXPRESS;'
-        'DATABASE=Pexeso;'
-        'UID=krazazi;'
-        'PWD=********;'
+    conn = psycopg2.connect(
+        host="**************",
+        port="5432",
+        database="pexeso",
+        user="*****",
+        password="*******"
     )
+
     cursor = conn.cursor()
     databaze = True
 except Exception:
